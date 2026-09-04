@@ -251,12 +251,14 @@
             window.renderApp();
         };
 
+        // ĐÃ SỬA THÀNH ONBLUR, KHÔNG BỊ NHẢY KHI GÕ
         window.setUserName = (val) => {
             window.userName = val;
             localStorage.setItem('bible_userName', val);
             if (window.bestStreak > 0 && window.updateCloudStreak) {
                 window.updateCloudStreak(val || 'Ẩn danh', window.bestStreak);
             }
+            window.renderApp(); // Cập nhật lại giao diện sau khi gõ xong
         };
 
         // --- STREAMING_CHUNK:Home & Leaderboard Views ---
@@ -271,7 +273,8 @@
 
                         <div class="mb-6 w-full max-w-xs mx-auto mt-6">
                             <label class="block text-xs font-semibold text-[#666] mb-2 uppercase tracking-widest">Tên bạn là</label>
-                            <input type="text" value="${window.userName}" oninput="window.setUserName(this.value)" placeholder="Nhập tên..." class="w-full text-center px-4 py-3 bg-white rounded-2xl text-lg font-semibold text-[#1a1a1a] focus:outline-none focus:ring-4 focus:ring-[#ffaa00]/30 transition-all" />
+                            <!-- SỬA ONINPUT THÀNH ONBLUR TẠI ĐÂY -->
+                            <input type="text" value="${window.userName}" onblur="window.setUserName(this.value)" placeholder="Nhập tên..." class="w-full text-center px-4 py-3 bg-white rounded-2xl text-lg font-semibold text-[#1a1a1a] focus:outline-none focus:ring-4 focus:ring-[#ffaa00]/30 transition-all" />
                         </div>
                     </div>
 
