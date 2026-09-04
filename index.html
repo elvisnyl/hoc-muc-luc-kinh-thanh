@@ -33,8 +33,16 @@
         import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // NẾU BẠN ĐƯA LÊN VERCEL, HÃY DÁN CẤU HÌNH FIREBASE CỦA BẠN VÀO ĐÂY:
-        const VERCEL_FIREBASE_CONFIG = null; 
+        // CẤU HÌNH FIREBASE CHÍNH THỨC CỦA DỰ ÁN
+        const VERCEL_FIREBASE_CONFIG = {
+            apiKey: "AIzaSyCN1YagLboWpmOB-uU5NzgemDBzeE8XeXY",
+            authDomain: "muc-luc-kinh-thanh.firebaseapp.com",
+            projectId: "muc-luc-kinh-thanh",
+            storageBucket: "muc-luc-kinh-thanh.firebasestorage.app",
+            messagingSenderId: "961087540885",
+            appId: "1:961087540885:web:5cae0b807295ce834c159c",
+            measurementId: "G-9WK3JLCC03"
+        }; 
         
         let parsedConfig = null;
         try {
@@ -42,7 +50,7 @@
             parsedConfig = typeof configStr === 'string' ? JSON.parse(configStr) : configStr;
         } catch(e) {}
         
-        const firebaseConfig = parsedConfig || VERCEL_FIREBASE_CONFIG;
+        const firebaseConfig = VERCEL_FIREBASE_CONFIG || parsedConfig;
 
         window.leaderboardData = [];
         window.firebaseUserId = null;
@@ -51,7 +59,6 @@
             const app = initializeApp(firebaseConfig);
             const auth = getAuth(app);
             const db = getFirestore(app);
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'bible-app-vercel';
 
             const initAuth = async () => {
                 const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
@@ -62,7 +69,8 @@
                     if (!auth.currentUser) return;
                     window.firebaseUserId = auth.currentUser.uid;
 
-                    const lbRef = collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard');
+                    // Sử dụng collection 'leaderboard' trực tiếp
+                    const lbRef = collection(db, 'leaderboard');
                     onSnapshot(lbRef, (snapshot) => {
                         let data = [];
                         snapshot.forEach(d => data.push(d.data()));
@@ -75,10 +83,15 @@
                     }, (err) => console.log("Lỗi tải Bảng xếp hạng", err));
 
                     window.updateCloudStreak = async (name, streak) => {
-                        if(!name || streak <= 0 || !window.firebaseUserId) return;
-                        const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'leaderboard', window.firebaseUserId);
-                        await setDoc(docRef, { name: name, streak: streak, timestamp: Date.now() }, { merge: true });
+                        if(streak <= 0 || !window.firebaseUserId) return;
+                        const docRef = doc(db, 'leaderboard', window.firebaseUserId);
+                        await setDoc(docRef, { name: name || 'Ẩn danh', streak: streak, timestamp: Date.now() }, { merge: true });
                     };
+
+                    // Đồng bộ lại điểm cao nhất nếu trước đó đã có streak
+                    if (window.bestStreak > 0) {
+                        window.updateCloudStreak(window.userName || 'Ẩn danh', window.bestStreak);
+                    }
 
                 } catch(e) { console.error("Firebase auth error", e); }
             };
@@ -241,6 +254,9 @@
         window.setUserName = (val) => {
             window.userName = val;
             localStorage.setItem('bible_userName', val);
+            if (window.bestStreak > 0 && window.updateCloudStreak) {
+                window.updateCloudStreak(val || 'Ẩn danh', window.bestStreak);
+            }
         };
 
         // --- STREAMING_CHUNK:Home & Leaderboard Views ---
