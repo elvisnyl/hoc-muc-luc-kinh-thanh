@@ -54,7 +54,8 @@
         const firebaseConfig = VERCEL_FIREBASE_CONFIG || parsedConfig;
 
         window.leaderboardData = [];
-        window.activeLearners = 0;
+        window.totalLearners = 0;
+        window.onlineLearners = 0;
         window.firebaseUserId = null;
 
         if (firebaseConfig) {
@@ -71,14 +72,33 @@
                     if (!auth.currentUser) return;
                     window.firebaseUserId = auth.currentUser.uid;
 
+                    // --- CƠ CHẾ BÁO DANH ONLINE (PRESENCE) ---
+                    const pingPresence = async () => {
+                        if (!window.firebaseUserId) return;
+                        try {
+                            const docRef = doc(db, 'leaderboard', window.firebaseUserId);
+                            await setDoc(docRef, { lastActive: Date.now() }, { merge: true });
+                        } catch(e) {}
+                    };
+                    pingPresence(); // Báo cáo ngay khi vào web
+                    setInterval(pingPresence, 45000); // Tự động báo cáo mỗi 45 giây
+
                     // Lắng nghe Leaderboard và lọc người chơi
                     const lbRef = collection(db, 'leaderboard');
                     onSnapshot(lbRef, (snapshot) => {
-                        window.activeLearners = snapshot.size; // Lấy tổng số người
+                        const now = Date.now();
+                        window.totalLearners = snapshot.size; // Tổng số người đã từng truy cập
+                        window.onlineLearners = 0; // Khởi tạo số người online
+
                         let data = [];
                         snapshot.forEach(d => {
                             const user = d.data();
-                            // Chỉ đưa vào danh sách hiển thị nếu có tên (Khác rỗng và khác Ẩn danh)
+                            // Tính người online: Có nhịp tim (lastActive) trong 2 phút đổ lại
+                            if (user.lastActive && (now - user.lastActive < 120000)) {
+                                window.onlineLearners++;
+                            }
+
+                            // Chỉ đưa vào bảng xếp hạng nếu có tên (Khác rỗng và khác Ẩn danh)
                             if (user.name && user.name.trim() !== '' && user.name !== 'Ẩn danh') {
                                 data.push(user);
                             }
@@ -310,8 +330,21 @@
                     <div class="mt-12 w-full max-w-2xl bg-gradient-to-br from-[#FFE7A0] via-[#FFD700] to-[#FFA500] p-6 md:p-8 rounded-3xl">
                         <div class="text-center mb-6">
                             <h2 class="text-2xl font-bold mb-1 text-[#1a1a1a] uppercase">Bảng Xếp Hạng</h2>
-                            <p class="text-sm text-[#7a5c00] font-medium">Kỷ lục chuỗi nhớ liên tiếp cao nhất</p>
-                            <p class="text-sm text-[#7a5c00] font-bold mt-2">🔥 <span id="active-learners">${window.activeLearners || 0}</span> người đang cùng học</p>
+                            <p class="text-sm text-[#7a5c00] font-medium mb-4">Kỷ lục chuỗi nhớ liên tiếp cao nhất</p>
+                            
+                            <div class="flex items-center justify-center space-x-5 md:space-x-8 bg-white/40 inline-flex px-6 py-2.5 rounded-2xl">
+                                <div class="flex items-center text-[#7a5c00]">
+                                    <i data-lucide="users" class="w-4 h-4 mr-2"></i>
+                                    <span class="font-bold text-lg mr-1">${window.totalLearners || 0}</span> 
+                                    <span class="text-xs font-semibold uppercase tracking-wider mt-0.5">Đã học</span>
+                                </div>
+                                <div class="w-[2px] h-6 bg-[#dcd3c3]"></div>
+                                <div class="flex items-center text-[#00ba34]">
+                                    <i data-lucide="radio" class="w-4 h-4 mr-2 animate-pulse"></i>
+                                    <span class="font-bold text-lg mr-1">${window.onlineLearners || 0}</span> 
+                                    <span class="text-xs font-semibold uppercase tracking-wider mt-0.5">Online</span>
+                                </div>
+                            </div>
                         </div>
                         <div class="space-y-3">
                             ${data.length === 0 ? '<p class="text-center text-[#7a5c00] p-6 text-base font-semibold bg-white/50 rounded-2xl">Đang tải hoặc chưa có dữ liệu. Hãy là người đầu tiên ghi danh!</p>' : ''}
