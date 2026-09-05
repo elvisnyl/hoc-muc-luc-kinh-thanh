@@ -216,6 +216,9 @@
         window.currentView = 'home';
         window.userName = localStorage.getItem('bible_userName') || '';
         
+        window.showNameModal = false;
+        window.pendingView = null;
+
         window.testLevel = null;
         window.testOptions = [];
         window.testTargetOrder = [];
@@ -259,6 +262,13 @@
         };
 
         window.setView = (view) => {
+            if (view !== 'home' && (!window.userName || window.userName.trim() === '')) {
+                window.pendingView = view;
+                window.showNameModal = true;
+                window.renderApp();
+                return;
+            }
+
             window.currentView = view;
             if (view !== 'test') { 
                 window.testLevel = null; 
@@ -277,6 +287,30 @@
             localStorage.setItem('bible_userName', val);
             if (window.bestStreak > 0 && window.updateCloudStreak) {
                 window.updateCloudStreak(val || 'Ẩn danh', window.bestStreak);
+            }
+        };
+
+        window.closeNameModal = () => {
+            window.showNameModal = false;
+            window.pendingView = null;
+            window.renderApp();
+        };
+
+        window.submitNameModal = () => {
+            const input = document.getElementById('modal-name-input');
+            const val = input.value.trim();
+            if (val) {
+                window.setUserName(val);
+                window.showNameModal = false;
+                if (window.pendingView) {
+                    window.setView(window.pendingView);
+                    window.pendingView = null;
+                } else {
+                    window.renderApp();
+                }
+            } else {
+                input.classList.add('border-red-500');
+                setTimeout(() => input.classList.remove('border-red-500'), 500);
             }
         };
 
@@ -987,8 +1021,35 @@
             else if (window.currentView === 'test') content = getTestHTML();
             else if (window.currentView === 'flashcard') content = getFlashcardHTML();
 
-            app.innerHTML = headerHTML + `<main class="flex-grow flex flex-col items-center w-full">${content}</main>`;
+            let modalHTML = '';
+            if (window.showNameModal) {
+                modalHTML = `
+                <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm fade-in px-4">
+                    <div class="bg-white rounded-3xl p-6 md:p-8 max-w-sm w-full text-center shadow-2xl">
+                        <div class="w-16 h-16 bg-[#ffaa00]/20 text-[#ffaa00] rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i data-lucide="user" class="w-8 h-8"></i>
+                        </div>
+                        <h3 class="text-2xl font-bold text-[#1a1a1a] mb-2 uppercase">Bạn tên là gì?</h3>
+                        <p class="text-[#666] text-sm mb-6 font-medium">Vui lòng nhập tên để lưu kỷ lục của bạn lên bảng xếp hạng trước khi bắt đầu.</p>
+                        
+                        <input type="text" id="modal-name-input" placeholder="Nhập tên..." class="w-full text-center px-4 py-3 bg-gray-100 rounded-2xl text-lg font-bold text-[#1a1a1a] focus:outline-none focus:ring-4 focus:ring-[#ffaa00]/30 transition-all border-2 border-transparent focus:border-[#ffaa00]/50 mb-6" onkeydown="if(event.key === 'Enter') window.submitNameModal()" />
+                        
+                        <div class="flex gap-3">
+                            <button onclick="window.closeNameModal()" class="flex-1 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-[#1a1a1a] rounded-2xl font-bold uppercase transition-all">Hủy</button>
+                            <button onclick="window.submitNameModal()" class="flex-1 px-4 py-3 bg-[#1a1a1a] hover:bg-[#ffaa00] hover:text-[#1a1a1a] text-white rounded-2xl font-bold uppercase transition-all shadow-md">Bắt đầu</button>
+                        </div>
+                    </div>
+                </div>
+                `;
+            }
+
+            app.innerHTML = headerHTML + `<main class="flex-grow flex flex-col items-center w-full">${content}</main>` + modalHTML;
             lucide.createIcons();
+
+            if (window.showNameModal) {
+                const input = document.getElementById('modal-name-input');
+                if (input) input.focus();
+            }
         };
 
         window.renderApp(); 
