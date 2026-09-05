@@ -30,7 +30,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // CẤU HÌNH FIREBASE CHÍNH THỨC CỦA DỰ ÁN
@@ -44,7 +44,13 @@
             measurementId: "G-9WK3JLCC03"
         }; 
         
-        const firebaseConfig = VERCEL_FIREBASE_CONFIG;
+        let parsedConfig = null;
+        try {
+            const configStr = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
+            parsedConfig = typeof configStr === 'string' ? JSON.parse(configStr) : configStr;
+        } catch(e) {}
+        
+        const firebaseConfig = VERCEL_FIREBASE_CONFIG || parsedConfig;
 
         window.leaderboardData = [];
         window.firebaseUserId = null;
@@ -57,29 +63,34 @@
             const db = getFirestore(app);
 
             const initAuth = async () => {
+                const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
                 try {
-                    await signInAnonymously(auth);
+                    if (token) await signInWithCustomToken(auth, token);
+                    else await signInAnonymously(auth);
+                    
                     if (!auth.currentUser) return;
                     window.firebaseUserId = auth.currentUser.uid;
 
+                    // Lắng nghe Leaderboard và lọc người chơi
                     const lbRef = collection(db, 'leaderboard');
                     onSnapshot(lbRef, (snapshot) => {
                         const now = Date.now();
-                        window.totalLearners = snapshot.size; 
-                        window.onlineLearners = 0; 
+                        window.totalLearners = snapshot.size; // Tổng số người đã từng truy cập
+                        window.onlineLearners = 0; // Khởi tạo số người online
 
                         let data = [];
                         snapshot.forEach(d => {
                             const user = d.data();
-                            const isUserOnline = user.lastActive && (now - user.lastActive < 120000);
                             
+                            // Tính người online: Có nhịp tim (lastActive) trong 2 phút đổ lại
+                            const isUserOnline = user.lastActive && (now - user.lastActive < 120000);
                             if (isUserOnline) {
                                 window.onlineLearners++;
                             }
 
                             // Chỉ đưa vào bảng xếp hạng nếu có tên (Khác rỗng và khác Ẩn danh)
                             if (user.name && user.name.trim() !== '' && user.name !== 'Ẩn danh') {
-                                user.isOnline = isUserOnline; 
+                                user.isOnline = isUserOnline; // Gắn cờ online cho người này
                                 data.push(user);
                             }
                         });
@@ -87,11 +98,12 @@
                         data.sort((a, b) => b.streak - a.streak);
                         window.leaderboardData = data.slice(0, 10);
                         
+                        // Cập nhật giao diện nếu đang ở Home
                         if(window.currentView === 'home' && window.renderApp) window.renderApp();
                     }, (err) => console.log("Lỗi tải Bảng xếp hạng", err));
 
                     window.updateCloudStreak = async (name, streak) => {
-                        // BẢO VỆ KÉP: Chặn không cho gửi dữ liệu nếu chưa có tên
+                        // CHẶN BÁO DANH NẾU LÀ ẨN DANH
                         if(!window.firebaseUserId || !name || name === 'Ẩn danh') return;
                         
                         const docRef = doc(db, 'leaderboard', window.firebaseUserId);
@@ -128,18 +140,18 @@
             { id: 3, name: 'Lê-vi Ký', group: 'Luật pháp', testament: 'Cựu Ước', icon: 'scroll', author: 'Môi-se', year: 'Khoảng 1440 - 1400 TCN', summary: 'Các luật lệ về sự thánh khiết, chức tế lễ, các của lễ và cách thờ phượng Đức Chúa Trời.' },
             { id: 4, name: 'Dân Số Ký', group: 'Luật pháp', testament: 'Cựu Ước', icon: 'scroll', author: 'Môi-se', year: 'Khoảng 1440 - 1400 TCN', summary: 'Hành trình 40 năm lang thang trong đồng vắng của dân Y-sơ-ra-ên vì sự vô tín.' },
             { id: 5, name: 'Phục Truyền Luật Lệ Ký', group: 'Luật pháp', testament: 'Cựu Ước', icon: 'scroll', author: 'Môi-se', year: 'Khoảng 1400 TCN', summary: 'Môi-se nhắc lại luật pháp và giao ước cho thế hệ mới trước khi họ tiến vào Đất Hứa.' },
-            { id: 6, name: 'Giô-suê', group: 'Lịch sử', testament: 'Cựu Ước', icon: 'crown', author: 'Giô-suê', year: 'Khoảng 1350 TCN', summary: 'Dân Y-sơ-ra-ên tiến vào, chinh phục và phân chia Đất Hứa dưới sự lãnh đạo của Giô-suê.' },
-            { id: 7, name: 'Các Quan Xét', group: 'Lịch sử', testament: 'Cựu Ước', icon: 'crown', author: 'Khuyết danh (có thể là Sa-mu-ên)', year: 'Khoảng 1050 - 1000 TCN', summary: 'Thời kỳ tăm tối khi dân sự bội nghịch, bị áp bức, và Chúa dấy lên các quan xét để giải cứu họ.' },
-            { id: 8, name: 'Ru-tơ', group: 'Lịch sử', testament: 'Cựu Ước', icon: 'crown', author: 'Khuyết danh (có thể là Sa-mu-ên)', year: 'Khoảng 1000 TCN', summary: 'Câu chuyện tuyệt đẹp về tình yêu, lòng trung thành của Ru-tơ và sự cứu chuộc của Bô-ô.' },
-            { id: 9, name: 'I Sa-mu-ên', group: 'Lịch sử', testament: 'Cựu Ước', icon: 'crown', author: 'Khuyết danh', year: 'Khoảng 930 TCN', summary: 'Sự chuyển tiếp từ thời kỳ các quan xét sang chế độ quân chủ, với các vua Sau-lơ và Đa-vít.' },
-            { id: 10, name: 'II Sa-mu-ên', group: 'Lịch sử', testament: 'Cựu Ước', icon: 'crown', author: 'Khuyết danh', year: 'Khoảng 930 TCN', summary: 'Triều đại của vua Đa-vít, những thành tựu vĩ đại và cả những sa ngã của ông.' },
-            { id: 11, name: 'I Các Vua', group: 'Lịch sử', testament: 'Cựu Ước', icon: 'crown', author: 'Khuyết danh (có thể là Giê-rê-mi)', year: 'Khoảng 550 TCN', summary: 'Sự vinh hiển dưới thời Sa-lô-môn và sự chia đôi vương quốc thành Bắc (Y-sơ-ra-ên) và Nam (Giu-đa).' },
-            { id: 12, name: 'II Các Vua', group: 'Lịch sử', testament: 'Cựu Ước', icon: 'crown', author: 'Khuyết danh (có thể là Giê-rê-mi)', year: 'Khoảng 550 TCN', summary: 'Sự suy tàn và sụp đổ của cả hai vương quốc do tội lỗi, dẫn đến việc bị lưu đày.' },
-            { id: 13, name: 'I Sử Ký', group: 'Lịch sử', testament: 'Cựu Ước', icon: 'crown', author: 'Khuyết danh (có thể là Ê-xơ-ra)', year: 'Khoảng 450 TCN', summary: 'Gia phổ dân Y-sơ-ra-ên và cái nhìn tích cực về triều đại vua Đa-vít cũng như việc thờ phượng.' },
-            { id: 14, name: 'II Sử Ký', group: 'Lịch sử', testament: 'Cựu Ước', icon: 'crown', author: 'Khuyết danh (có thể là Ê-xơ-ra)', year: 'Khoảng 450 TCN', summary: 'Lịch sử vương quốc Giu-đa từ thời Sa-lô-môn đến khi bị lưu đày sang Ba-by-lôn.' },
-            { id: 15, name: 'Ê-xơ-ra', group: 'Lịch sử', testament: 'Cựu Ước', icon: 'crown', author: 'Ê-xơ-ra', year: 'Khoảng 450 TCN', summary: 'Dân Giu-đa trở về từ nơi lưu đày và xây dựng lại Đền Thờ tại Giê-ru-sa-lem.' },
-            { id: 16, name: 'Nê-hê-mi', group: 'Lịch sử', testament: 'Cựu Ước', icon: 'crown', author: 'Nê-hê-mi', year: 'Khoảng 445 - 432 TCN', summary: 'Công cuộc xây dựng lại bức tường thành Giê-ru-sa-lem và cuộc phục hưng thuộc linh.' },
-            { id: 17, name: 'Ê-xơ-tê', group: 'Lịch sử', testament: 'Cựu Ước', icon: 'crown', author: 'Khuyết danh', year: 'Khoảng 400 TCN', summary: 'Đức Chúa Trời bảo vệ dân Do Thái khỏi nguy cơ bị diệt chủng tại đế quốc Ba Tư qua Hoàng hậu Ê-xơ-tê.' },
+            { id: 6, name: 'Giô-suê', group: 'Lịch sử (Cựu Ước)', testament: 'Cựu Ước', icon: 'crown', author: 'Giô-suê', year: 'Khoảng 1350 TCN', summary: 'Dân Y-sơ-ra-ên tiến vào, chinh phục và phân chia Đất Hứa dưới sự lãnh đạo của Giô-suê.' },
+            { id: 7, name: 'Các Quan Xét', group: 'Lịch sử (Cựu Ước)', testament: 'Cựu Ước', icon: 'crown', author: 'Khuyết danh (có thể là Sa-mu-ên)', year: 'Khoảng 1050 - 1000 TCN', summary: 'Thời kỳ tăm tối khi dân sự bội nghịch, bị áp bức, và Chúa dấy lên các quan xét để giải cứu họ.' },
+            { id: 8, name: 'Ru-tơ', group: 'Lịch sử (Cựu Ước)', testament: 'Cựu Ước', icon: 'crown', author: 'Khuyết danh (có thể là Sa-mu-ên)', year: 'Khoảng 1000 TCN', summary: 'Câu chuyện tuyệt đẹp về tình yêu, lòng trung thành của Ru-tơ và sự cứu chuộc của Bô-ô.' },
+            { id: 9, name: 'I Sa-mu-ên', group: 'Lịch sử (Cựu Ước)', testament: 'Cựu Ước', icon: 'crown', author: 'Khuyết danh', year: 'Khoảng 930 TCN', summary: 'Sự chuyển tiếp từ thời kỳ các quan xét sang chế độ quân chủ, với các vua Sau-lơ và Đa-vít.' },
+            { id: 10, name: 'II Sa-mu-ên', group: 'Lịch sử (Cựu Ước)', testament: 'Cựu Ước', icon: 'crown', author: 'Khuyết danh', year: 'Khoảng 930 TCN', summary: 'Triều đại của vua Đa-vít, những thành tựu vĩ đại và cả những sa ngã của ông.' },
+            { id: 11, name: 'I Các Vua', group: 'Lịch sử (Cựu Ước)', testament: 'Cựu Ước', icon: 'crown', author: 'Khuyết danh (có thể là Giê-rê-mi)', year: 'Khoảng 550 TCN', summary: 'Sự vinh hiển dưới thời Sa-lô-môn và sự chia đôi vương quốc thành Bắc (Y-sơ-ra-ên) và Nam (Giu-đa).' },
+            { id: 12, name: 'II Các Vua', group: 'Lịch sử (Cựu Ước)', testament: 'Cựu Ước', icon: 'crown', author: 'Khuyết danh (có thể là Giê-rê-mi)', year: 'Khoảng 550 TCN', summary: 'Sự suy tàn và sụp đổ của cả hai vương quốc do tội lỗi, dẫn đến việc bị lưu đày.' },
+            { id: 13, name: 'I Sử Ký', group: 'Lịch sử (Cựu Ước)', testament: 'Cựu Ước', icon: 'crown', author: 'Khuyết danh (có thể là Ê-xơ-ra)', year: 'Khoảng 450 TCN', summary: 'Gia phổ dân Y-sơ-ra-ên và cái nhìn tích cực về triều đại vua Đa-vít cũng như việc thờ phượng.' },
+            { id: 14, name: 'II Sử Ký', group: 'Lịch sử (Cựu Ước)', testament: 'Cựu Ước', icon: 'crown', author: 'Khuyết danh (có thể là Ê-xơ-ra)', year: 'Khoảng 450 TCN', summary: 'Lịch sử vương quốc Giu-đa từ thời Sa-lô-môn đến khi bị lưu đày sang Ba-by-lôn.' },
+            { id: 15, name: 'Ê-xơ-ra', group: 'Lịch sử (Cựu Ước)', testament: 'Cựu Ước', icon: 'crown', author: 'Ê-xơ-ra', year: 'Khoảng 450 TCN', summary: 'Dân Giu-đa trở về từ nơi lưu đày và xây dựng lại Đền Thờ tại Giê-ru-sa-lem.' },
+            { id: 16, name: 'Nê-hê-mi', group: 'Lịch sử (Cựu Ước)', testament: 'Cựu Ước', icon: 'crown', author: 'Nê-hê-mi', year: 'Khoảng 445 - 432 TCN', summary: 'Công cuộc xây dựng lại bức tường thành Giê-ru-sa-lem và cuộc phục hưng thuộc linh.' },
+            { id: 17, name: 'Ê-xơ-tê', group: 'Lịch sử (Cựu Ước)', testament: 'Cựu Ước', icon: 'crown', author: 'Khuyết danh', year: 'Khoảng 400 TCN', summary: 'Đức Chúa Trời bảo vệ dân Do Thái khỏi nguy cơ bị diệt chủng tại đế quốc Ba Tư qua Hoàng hậu Ê-xơ-tê.' },
             { id: 18, name: 'Gióp', group: 'Thi ca & Khôn ngoan', testament: 'Cựu Ước', icon: 'music', author: 'Khuyết danh', year: 'Rất cổ xưa (có thể thời các Tổ phụ)', summary: 'Trải nghiệm sự đau khổ tột cùng của một người công bình và câu hỏi về sự tể trị của Đức Chúa Trời.' },
             { id: 19, name: 'Thi Thiên', group: 'Thi ca & Khôn ngoan', testament: 'Cựu Ước', icon: 'music', author: 'Đa-vít và nhiều người khác', year: 'Khoảng 1440 - 450 TCN', summary: 'Tuyển tập các bài thơ, bài ca ngợi khen, than thở và cầu nguyện của dân Y-sơ-ra-ên.' },
             { id: 20, name: 'Châm Ngôn', group: 'Thi ca & Khôn ngoan', testament: 'Cựu Ước', icon: 'music', author: 'Sa-lô-môn và người khác', year: 'Khoảng 950 - 700 TCN', summary: 'Những câu nói khôn ngoan ứng dụng vào thực tế đời sống để sống đẹp lòng Chúa.' },
@@ -168,7 +180,7 @@
             { id: 41, name: 'Mác', group: 'Phúc âm', testament: 'Tân Ước', icon: 'cross', author: 'Giăng Mác', year: 'Khoảng 50 - 70 SC', summary: 'Khắc họa Chúa Giê-xu là Đầy tớ chịu khổ, hành động mạnh mẽ và dứt khoát (hướng tới người La Mã).' },
             { id: 42, name: 'Lu-ca', group: 'Phúc âm', testament: 'Tân Ước', icon: 'cross', author: 'Lu-ca', year: 'Khoảng 60 - 62 SC', summary: 'Trình bày Chúa Giê-xu là Con Người hoàn hảo, Đấng cứu rỗi nhân loại (hướng tới người Hy Lạp).' },
             { id: 43, name: 'Giăng', group: 'Phúc âm', testament: 'Tân Ước', icon: 'cross', author: 'Sứ đồ Giăng', year: 'Khoảng 80 - 90 SC', summary: 'Khẳng định Chúa Giê-xu là Con Đức Chúa Trời, Đấng ban sự sống đời đời cho ai tin Ngài.' },
-            { id: 44, name: 'Công Vụ Các Sứ Đồ', group: 'Lịch sử', testament: 'Tân Ước', icon: 'map', author: 'Lu-ca', year: 'Khoảng 62 SC', summary: 'Sự khai sinh và phát triển của Hội thánh đầu tiên dưới quyền năng Đức Thánh Linh.' },
+            { id: 44, name: 'Công Vụ Các Sứ Đồ', group: 'Lịch sử (Tân Ước)', testament: 'Tân Ước', icon: 'map', author: 'Lu-ca', year: 'Khoảng 62 SC', summary: 'Sự khai sinh và phát triển của Hội thánh đầu tiên dưới quyền năng Đức Thánh Linh.' },
             { id: 45, name: 'Rô-ma', group: 'Thư Phao-lô gửi các Hội thánh', testament: 'Tân Ước', icon: 'message-circle', author: 'Sứ đồ Phao-lô', year: 'Khoảng 57 SC', summary: 'Trình bày hệ thống giáo lý toàn diện về sự xưng công bình bởi đức tin.' },
             { id: 46, name: 'I Cô-rinh-tô', group: 'Thư Phao-lô gửi các Hội thánh', testament: 'Tân Ước', icon: 'message-circle', author: 'Sứ đồ Phao-lô', year: 'Khoảng 55 SC', summary: 'Giải quyết các nan đề về đạo đức, sự chia rẽ và các ân tứ trong Hội thánh Cô-rinh-tô.' },
             { id: 47, name: 'II Cô-rinh-tô', group: 'Thư Phao-lô gửi các Hội thánh', testament: 'Tân Ước', icon: 'message-circle', author: 'Sứ đồ Phao-lô', year: 'Khoảng 56 SC', summary: 'Phao-lô bảo vệ chức vụ sứ đồ của mình và khích lệ sự dâng hiến rời rộng.' },
@@ -193,19 +205,20 @@
             { id: 66, name: 'Khải Huyền', group: 'Tiên tri', testament: 'Tân Ước', icon: 'flame', author: 'Sứ đồ Giăng', year: 'Khoảng 95 SC', summary: 'Khải tượng về chiến thắng cuối cùng của Chúa Giê-xu trên tội lỗi, Satan, và sự thiết lập Trời Mới Đất Mới.' },
         ];
 
-        // Sắp xếp lại Phúc âm lên trước Lịch sử (Tân Ước)
+        // Sắp xếp lại nhóm sách đúng thứ tự Cựu và Tân
         const GROUP_ORDER = [
-            'Luật pháp', 'Lịch sử', 'Thi ca & Khôn ngoan', 'Đại Tiên tri', 'Tiểu tiên tri',
-            'Phúc âm', 'Thư Phao-lô gửi các Hội thánh', 'Thư Phao-lô gửi cá nhân', 'Thư tín chung', 'Tiên tri'
+            'Luật pháp', 'Lịch sử (Cựu Ước)', 'Thi ca & Khôn ngoan', 'Đại Tiên tri', 'Tiểu tiên tri',
+            'Phúc âm', 'Lịch sử (Tân Ước)', 'Thư Phao-lô gửi các Hội thánh', 'Thư Phao-lô gửi cá nhân', 'Thư tín chung', 'Tiên tri'
         ];
 
         const GROUP_COLORS = {
             'Luật pháp': 'bg-[#c5e0f5]', 
-            'Lịch sử': 'bg-[#fce5cd]', 
+            'Lịch sử (Cựu Ước)': 'bg-[#fce5cd]', 
             'Thi ca & Khôn ngoan': 'bg-[#f4cccc]', 
             'Đại Tiên tri': 'bg-[#b6d7a8]', 
             'Tiểu tiên tri': 'bg-[#d9ead3]', 
             'Phúc âm': 'bg-[#f9cb9c]', 
+            'Lịch sử (Tân Ước)': 'bg-[#c5e0f5]',
             'Thư Phao-lô gửi các Hội thánh': 'bg-[#d9ead3]', 
             'Thư Phao-lô gửi cá nhân': 'bg-[#f4cccc]', 
             'Thư tín chung': 'bg-[#c5e0f5]', 
@@ -602,67 +615,87 @@
             window.testScored = false;
             
             const type = Math.floor(Math.random() * 6); // 6 Dạng câu hỏi
-            const promptIndex = Math.floor(Math.random() * BIBLE_BOOKS.length); 
-            const promptBook = BIBLE_BOOKS[promptIndex];
             
             let questionText = "";
             let correctOption = null;
             let options = [];
+            let displayPromptBook = null;
 
             if (type === 0) {
-                const pIdx = Math.min(BIBLE_BOOKS.length - 2, promptIndex); 
+                // Sách nằm NGAY SAU
+                // Đảm bảo không chọn sách cuối cùng (Khải Huyền)
+                const pIdx = Math.floor(Math.random() * (BIBLE_BOOKS.length - 1)); // 0..64
+                const promptBook = BIBLE_BOOKS[pIdx];
                 const correctBook = BIBLE_BOOKS[pIdx + 1];
+                
                 correctOption = { id: correctBook.id, label: correctBook.name };
                 questionText = 'Sách nào nằm NGAY SAU sách này?';
+                displayPromptBook = promptBook;
                 
                 let wrongIndices = [];
-                for (let i = Math.max(0, pIdx - 6); i <= Math.min(BIBLE_BOOKS.length - 1, pIdx + 6); i++) {
+                for (let i = Math.max(0, pIdx - 5); i <= Math.min(BIBLE_BOOKS.length - 1, pIdx + 5); i++) {
                     if (i !== pIdx && i !== pIdx + 1) wrongIndices.push(i);
                 }
                 wrongIndices.sort(() => Math.random() - 0.5);
                 options = [correctOption];
                 for (let i = 0; i < 3; i++) options.push({ id: BIBLE_BOOKS[wrongIndices[i]].id, label: BIBLE_BOOKS[wrongIndices[i]].name });
-                window.nextTarget = { promptBook, questionText, correctOption };
 
             } else if (type === 1) {
-                const pIdx = Math.max(1, promptIndex); 
+                // Sách nằm NGAY TRƯỚC
+                // Đảm bảo không chọn sách đầu tiên (Sáng Thế Ký)
+                const pIdx = 1 + Math.floor(Math.random() * (BIBLE_BOOKS.length - 1)); // 1..65
+                const promptBook = BIBLE_BOOKS[pIdx];
                 const correctBook = BIBLE_BOOKS[pIdx - 1];
+                
                 correctOption = { id: correctBook.id, label: correctBook.name };
                 questionText = 'Sách nào nằm NGAY TRƯỚC sách này?';
+                displayPromptBook = promptBook;
                 
                 let wrongIndices = [];
-                for (let i = Math.max(0, pIdx - 6); i <= Math.min(BIBLE_BOOKS.length - 1, pIdx + 6); i++) {
+                for (let i = Math.max(0, pIdx - 5); i <= Math.min(BIBLE_BOOKS.length - 1, pIdx + 5); i++) {
                     if (i !== pIdx && i !== pIdx - 1) wrongIndices.push(i);
                 }
                 wrongIndices.sort(() => Math.random() - 0.5);
                 options = [correctOption];
                 for (let i = 0; i < 3; i++) options.push({ id: BIBLE_BOOKS[wrongIndices[i]].id, label: BIBLE_BOOKS[wrongIndices[i]].name });
-                window.nextTarget = { promptBook, questionText, correctOption };
 
             } else if (type === 2) {
+                // NHÓM SÁCH
+                const pIdx = Math.floor(Math.random() * BIBLE_BOOKS.length);
+                const promptBook = BIBLE_BOOKS[pIdx];
+                
                 correctOption = { id: promptBook.group, label: promptBook.group };
                 questionText = 'Sách này thuộc NHÓM SÁCH nào?';
+                displayPromptBook = promptBook;
                 
                 let allGroups = [...new Set(BIBLE_BOOKS.map(b => b.group))];
                 let wrongGroups = allGroups.filter(g => g !== promptBook.group).sort(() => Math.random() - 0.5);
                 
                 options = [correctOption];
                 for (let i = 0; i < 3; i++) options.push({ id: wrongGroups[i], label: wrongGroups[i] });
-                window.nextTarget = { promptBook, questionText, correctOption };
 
             } else if (type === 3) {
+                // CỰU ƯỚC HAY TÂN ƯỚC
+                const pIdx = Math.floor(Math.random() * BIBLE_BOOKS.length);
+                const promptBook = BIBLE_BOOKS[pIdx];
+                
                 correctOption = { id: promptBook.testament, label: promptBook.testament };
                 questionText = 'Sách này thuộc phần CỰU ƯỚC hay TÂN ƯỚC?';
+                displayPromptBook = promptBook;
                 
                 options = [
                     { id: 'Cựu Ước', label: 'Cựu Ước' },
                     { id: 'Tân Ước', label: 'Tân Ước' }
                 ];
-                window.nextTarget = { promptBook, questionText, correctOption };
 
             } else if (type === 4) {
+                // TÁC GIẢ
+                const pIdx = Math.floor(Math.random() * BIBLE_BOOKS.length);
+                const promptBook = BIBLE_BOOKS[pIdx];
+                
                 correctOption = { id: promptBook.author, label: promptBook.author };
                 questionText = 'Sách này do AI VIẾT (Tác giả)?';
+                displayPromptBook = promptBook;
                 
                 let allAuthors = [...new Set(BIBLE_BOOKS.map(b => b.author))];
                 let wrongAuthors = allAuthors.filter(a => a !== promptBook.author).sort(() => Math.random() - 0.5);
@@ -670,10 +703,11 @@
                 options = [correctOption];
                 let numWrong = Math.min(3, wrongAuthors.length);
                 for (let i = 0; i < numWrong; i++) options.push({ id: wrongAuthors[i], label: wrongAuthors[i] });
-                window.nextTarget = { promptBook, questionText, correctOption };
                 
             } else {
-                const pIdx = Math.max(1, Math.min(BIBLE_BOOKS.length - 2, promptIndex));
+                // Sách nằm GIỮA 2 sách này
+                // Đảm bảo lấy được 3 sách liên tiếp
+                const pIdx = 1 + Math.floor(Math.random() * (BIBLE_BOOKS.length - 2)); // 1..64
                 const correctBook = BIBLE_BOOKS[pIdx];
                 const bookBefore = BIBLE_BOOKS[pIdx - 1];
                 const bookAfter = BIBLE_BOOKS[pIdx + 1];
@@ -681,7 +715,7 @@
                 correctOption = { id: correctBook.id, label: correctBook.name };
                 questionText = 'Sách nào nằm GIỮA 2 sách này?';
                 
-                const displayBook = { name: `<span class="opacity-60 text-3xl sm:text-4xl block sm:inline">${bookBefore.name}</span> <span class="text-[#ffaa00] mx-2 text-3xl">... ? ...</span> <span class="opacity-60 text-3xl sm:text-4xl block sm:inline">${bookAfter.name}</span>` };
+                displayPromptBook = { name: `<span class="opacity-60 text-3xl sm:text-4xl block sm:inline">${bookBefore.name}</span> <span class="text-[#ffaa00] mx-2 text-3xl">... ? ...</span> <span class="opacity-60 text-3xl sm:text-4xl block sm:inline">${bookAfter.name}</span>` };
                 
                 let wrongIndices = [];
                 for (let i = Math.max(0, pIdx - 6); i < Math.min(BIBLE_BOOKS.length, pIdx + 6); i++) {
@@ -690,10 +724,9 @@
                 wrongIndices.sort(() => Math.random() - 0.5);
                 options = [correctOption];
                 for (let i = 0; i < 3; i++) options.push({ id: BIBLE_BOOKS[wrongIndices[i]].id, label: BIBLE_BOOKS[wrongIndices[i]].name });
-                
-                window.nextTarget = { promptBook: displayBook, questionText, correctOption };
             }
             
+            window.nextTarget = { promptBook: displayPromptBook, questionText, correctOption };
             window.nextOptions = options.sort(() => Math.random() - 0.5);
             window.renderApp();
         };
@@ -701,7 +734,9 @@
         window.handleNextOptionClick = (optionId) => {
             if (window.nextAnswered) return;
             window.nextAnswered = optionId;
-            window.testIsCorrect = (optionId === window.nextTarget.correctOption.id);
+            
+            // CHÚ Ý ÉP KIỂU CHUỖI ĐỂ TRÁNH LỖI SO SÁNH GIỮA STRING VÀ NUMBER
+            window.testIsCorrect = (String(optionId) === String(window.nextTarget.correctOption.id));
             
             if (window.testIsCorrect) {
                 playAudio("Chính xác!");
@@ -754,7 +789,7 @@
                                 <h3 class="text-2xl font-bold text-[#1a1a1a] mb-3 uppercase text-[#0085ff]">
                                     Sắp xếp ngẫu nhiên
                                 </h3>
-                                <p class="text-[#666] text-base mb-8 font-medium max-w-xs">Sắp xếp 5 sách ngẫu nhiên theo đúng thứ tự Kinh Thánh.</p>
+                                <p class="text-[#666] text-base mb-8 font-medium max-w-xs">Sắp xếp 5 sách ngẫu nhiên theo đúng thứ tự trước sau trong Kinh Thánh.</p>
                                 <div class="space-y-4 w-full mt-auto">
                                     <button onclick="window.startTest('OT')" class="w-full p-4 bg-[#c5e0f5] hover:bg-[#0085ff] hover:text-white rounded-2xl text-lg text-[#1a1a1a] font-bold uppercase transition-all shadow-sm">Cựu Ước</button>
                                     <button onclick="window.startTest('NT')" class="w-full p-4 bg-[#f9cb9c] hover:bg-[#ff7a00] hover:text-white rounded-2xl text-lg text-[#1a1a1a] font-bold uppercase transition-all shadow-sm">Tân Ước</button>
@@ -767,7 +802,7 @@
                                 <h3 class="text-2xl font-bold text-[#1a1a1a] mb-3 uppercase text-[#ffaa00]">
                                     Trắc nghiệm nhanh
                                 </h3>
-                                <p class="text-[#666] text-base mb-8 font-medium max-w-xs">Xoay vòng 6 dạng câu hỏi ngẫu nhiên. Rèn luyện phản xạ siêu tốc.</p>
+                                <p class="text-[#666] text-base mb-8 font-medium max-w-xs">Xoay vòng ngẫu nhiên 6 dạng câu hỏi về thứ tự và thuộc tính sách. Rèn phản xạ siêu tốc.</p>
                                 <div class="mt-auto flex items-center justify-center h-full w-full">
                                     <button onclick="window.startNextGame()" class="w-full p-6 bg-[#ffaa00] hover:bg-[#ff7a00] hover:text-white rounded-2xl text-xl text-[#1a1a1a] font-bold uppercase transition-all group shadow-sm">
                                         <div class="w-16 h-16 bg-white/30 rounded-full flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
@@ -807,16 +842,17 @@
                             ${window.nextOptions.map(option => {
                                 let btnClass = 'bg-white text-[#1a1a1a] hover:bg-gray-50 border-2 border-transparent hover:border-gray-200';
                                 if (window.nextAnswered) {
-                                    if (option.id === window.nextTarget.correctOption.id) {
+                                    // CHÚ Ý ÉP KIỂU STRING ĐỂ HIỂN THỊ ĐÚNG MÀU SẮC DÙ ID LÀ CHỮ HAY SỐ
+                                    if (String(option.id) === String(window.nextTarget.correctOption.id)) {
                                         btnClass = 'bg-[#00ba34] text-white scale-105 z-10 border-2 border-[#00ba34] shadow-lg'; 
-                                    } else if (option.id === window.nextAnswered) {
+                                    } else if (String(option.id) === String(window.nextAnswered)) {
                                         btnClass = 'bg-[#ff2a2a] text-white border-2 border-[#ff2a2a]'; 
                                     } else {
                                         btnClass = 'bg-gray-100 text-[#a0a0a0] opacity-50 pointer-events-none border-2 border-transparent';
                                     }
                                 }
                                 return `
-                                    <button onclick="window.handleNextOptionClick('${option.id}')" ${window.nextAnswered ? 'disabled' : ''} class="w-full p-5 text-lg md:text-xl font-bold uppercase rounded-2xl transition-all shadow-sm flex items-center justify-center text-center ${btnClass}">
+                                    <button data-opt-id="${option.id}" onclick="window.handleNextOptionClick(this.getAttribute('data-opt-id'))" ${window.nextAnswered ? 'disabled' : ''} class="w-full p-5 text-lg md:text-xl font-bold uppercase rounded-2xl transition-all shadow-sm flex items-center justify-center text-center ${btnClass}">
                                         ${option.label}
                                     </button>
                                 `;
@@ -880,7 +916,7 @@
 
                     <div class="bg-white rounded-3xl p-6 md:p-10 text-center mb-8 shadow-sm">
                         <h3 class="text-2xl md:text-3xl font-bold text-[#1a1a1a] mb-2 uppercase">Sắp xếp ngẫu nhiên</h3>
-                        <p class="text-base text-[#666] mb-8 font-medium">Nhấp chọn các sách bên dưới theo thứ tự xuất hiện gốc trong Kinh Thánh.</p>
+                        <p class="text-base text-[#666] mb-8 font-medium">Nhấp chọn các sách bên dưới theo đúng thứ tự trước sau xuất hiện trong Kinh Thánh.</p>
                         
                         <div class="flex flex-wrap justify-center gap-3 md:gap-4 min-h-[100px] p-6 bg-gray-50 rounded-2xl mb-6 border border-gray-100">
                             ${Array(5).fill(null).map((_, idx) => {
